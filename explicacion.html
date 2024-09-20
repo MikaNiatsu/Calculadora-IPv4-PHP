@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Explicación de los cálculos de IPv4</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.colors.min.css">
+    <style>
+        .code-block {
+            background-color: #f4f4f4;
+            border: 1px solid #1f0045;
+            color: #1f0045;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .binary-representation {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .binary-part {
+            padding: 4px 8px;
+            border-radius: 4px;
+            margin-right: -10px;
+            position: relative;
+            z-index: 1;
+        }
+        .binary-red { background-color: #ff6b6b; color: white; z-index: 3; }
+        .binary-subred { background-color: #4ecdc4; color: white; z-index: 2; }
+        .binary-host { background-color: #45b7d1; color: white; z-index: 1; }
+        .binary-legend {
+            display: flex;
+            flex-direction: column;
+            margin-left: 20px;
+        }
+        .binary-legend span {
+            font-size: 0.8em;
+            margin-bottom: 2px;
+        }
+    </style>
+    <link rel="stylesheet" href="public/style.css">
+    <link rel="icon" href="public/assets/icon.ico">
+</head>
+<body>
+    <main class="container">
+        <h1>Explicación de los cálculos de IPv4</h1>
+
+        <h2>1. Validación de IP y máscara</h2>
+        <p>
+            Antes de realizar cualquier cálculo, se valida que la dirección IP y la máscara de red sean válidas:
+        </p>
+        <ul>
+            <li>La IP debe ser una dirección IPv4 válida.</li>
+            <li>La máscara puede ser en formato decimal (ej. 255.255.255.0) o CIDR (ej. /24).</li>
+            <li>Si es decimal, debe ser una máscara válida (1s contiguos seguidos de 0s).</li>
+            <li>Si es CIDR, debe ser un número entre 0 y 32.</li>
+        </ul>
+
+        <h2>2. Conversión entre máscara decimal y CIDR</h2>
+        <p>
+            <strong>Decimal a CIDR:</strong> Se convierte cada octeto de la máscara a binario y se cuenta el número total de unos (1s).<br>
+            <strong>CIDR a Decimal:</strong> Se crea una cadena de 32 bits con n unos seguidos de (32-n) ceros, donde n es el valor CIDR. Luego, se divide esta cadena en octetos y se convierten a decimal.
+        </p>
+        <div class="code-block">
+// Decimal a CIDR
+$mascaraACIDR = function($mascara) {
+    return substr_count(implode('', array_map(function ($octet) {
+        return str_pad(decbin($octet), 8, '0', STR_PAD_LEFT);
+    }, explode('.', $mascara))), '1');
+};
+
+// CIDR a Decimal
+$CIDRaMascara = function($cidr) {
+    return long2ip(~(pow(2, 32 - $cidr) - 1));
+};
+        </div>
+
+        <h2>3. Conversión a binario</h2>
+        <p>
+            La dirección IP se convierte a su representación binaria para facilitar los cálculos y la visualización:
+        </p>
+        <div class="code-block">
+$convertirABinario = function($ip) {
+    $octetos = explode('.', $ip);
+    $binario = [];
+    foreach ($octetos as $octeto) {
+        $binario[] = str_pad(decbin($octeto), 8, '0', STR_PAD_LEFT);
+    }
+    return implode('.', $binario);
+};
+        </div>
+        <div class="binary-representation">
+            <span class="binary-part binary-red">11000000</span>
+            <span class="binary-part binary-subred">10101000</span>
+            <span class="binary-part binary-host">00000001</span>
+            <span class="binary-part binary-host">00000001</span>
+            <div class="binary-legend">
+                <span style="color: #ff6b6b;">red</span>
+                <span style="color: #4ecdc4;">subred</span>
+                <span style="color: #45b7d1;">host</span>
+            </div>
+        </div>
+
+        <h2>4. Determinación de la clase de IP</h2>
+        <p>
+            Se determina la clase de IP basándose en el valor del primer octeto:
+        </p>
+        <ul>
+            <li>Clase A: 1-126</li>
+            <li>Clase B: 128-191</li>
+            <li>Clase C: 192-223</li>
+            <li>Clase D (Multicast): 224-239</li>
+            <li>Clase E (Reservada): 240-255</li>
+        </ul>
+
+        <h2>5. Cálculo de la dirección de red</h2>
+        <p>
+            Se realiza una operación AND bit a bit entre la dirección IP y la máscara de subred:
+        </p>
+        <div class="code-block">
+$calcularRed = function($ip, $mascara) {
+    $ipLong = ip2long($ip);
+    $mascaraLong = ip2long($mascara);
+    return long2ip($ipLong & $mascaraLong);
+};
+        </div>
+
+        <h2>6. Cálculo de la dirección de broadcast</h2>
+        <p>
+            Se realiza una operación OR bit a bit entre la dirección IP y el complemento de la máscara de subred:
+        </p>
+        <div class="code-block">
+$calcularBroadcast = function($ip, $mascara) {
+    $ipLong = ip2long($ip);
+    $mascaraLong = ip2long($mascara);
+    return long2ip($ipLong | (~$mascaraLong));
+};
+        </div>
+
+        <h2>7. Cálculo del rango de hosts utilizables</h2>
+        <p>
+            <strong>Primer host:</strong> Se suma 1 a la dirección de red.<br>
+            <strong>Último host:</strong> Se resta 1 a la dirección de broadcast.
+        </p>
+        <div class="code-block">
+$calcularRangoHosts = function($red, $broadcast) {
+    $redLong = ip2long($red);
+    $broadcastLong = ip2long($broadcast);
+    $primerHost = long2ip($redLong + 1);
+    $ultimoHost = long2ip($broadcastLong - 1);
+    return [$primerHost, $ultimoHost];
+};
+        </div>
+
+        <h2>8. Cálculo del número de hosts utilizables</h2>
+        <p>
+            Se calcula usando la fórmula: 2^(32 - CIDR) - 2<br>
+            Se restan 2 para excluir la dirección de red y la de broadcast.
+        </p>
+        <div class="code-block">
+$calcularNumeroHosts = function($cidr) {
+    return pow(2, 32 - $cidr) - 2;
+};
+        </div>
+
+        <h2>9. Separación de partes binarias</h2>
+        <p>
+            Se separa la representación binaria en partes de red, subred y host:
+        </p>
+        <div class="code-block">
+$separarPartesBinarias = function($binario, $cidr, $clase) {
+    $binarioSinPuntos = str_replace('.', '', $binario);
+    $claseSubred = ['A' => 8, 'B' => 16, 'C' => 24];
+    $bitsPorDefectoRed = isset($claseSubred[$clase]) ? $claseSubred[$clase] : 0;
+    $binarioRed = substr($binarioSinPuntos, 0, $cidr);
+    $binarioHost = substr($binarioSinPuntos, $cidr);
+    $binarioSubred = substr($binarioSinPuntos, $bitsPorDefectoRed, $cidr - $bitsPorDefectoRed);
+    return [$binarioRed, $binarioSubred, $binarioHost];
+};
+        </div>
+
+        <h2>10. Verificación de IP privada</h2>
+        <p>
+            Se comprueba si la IP está en uno de los rangos de direcciones privadas:
+        </p>
+        <ul>
+            <li>10.0.0.0 - 10.255.255.255</li>
+            <li>172.16.0.0 - 172.31.255.255</li>
+            <li>192.168.0.0 - 192.168.255.255</li>
+        </ul>
+        <div class="code-block">
+$esPrivada = function($ip) {
+    $octetos = explode('.', $ip);
+    if ($octetos[0] == 10) return true;
+    if ($octetos[0] == 172 && $octetos[1] >= 16 && $octetos[1] <= 31) return true;
+    if ($octetos[0] == 192 && $octetos[1] == 168) return true;
+    return false;
+};
+        </div>
+
+        <h2>11. Verificación de IP de loopback</h2>
+        <p>
+            Se comprueba si la IP comienza con 127, que es el rango reservado para direcciones de loopback.
+        </p>
+        <div class="code-block">
+$esLoopback = function($ip) {
+    return substr($ip, 0, 4) === '127.';
+};
+        </div>
+        <div class="center-div" style="padding-top: 20px;">
+            <a href="index.php" role="button">Volver</a>
+        </div>
+    </main>
+</body>
+</html>
